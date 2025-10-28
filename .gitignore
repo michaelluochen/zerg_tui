@@ -121,3 +121,6 @@ config/local.toml
 # OS specific
 Thumbs.db
 Desktop.ini
+
+# Reference codebases (for development reference)
+reference/
