@@ -23,6 +23,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+# Build artifacts (hatchling)
+*.whl
+
 # Virtual Environments
 .env
 .venv
@@ -34,7 +37,7 @@ venv.bak/
 
 # uv (Python package manager)
 .python-version
-uv.lock
+# Note: uv.lock should be committed for reproducible builds
 
 # PyInstaller
 *.manifest
@@ -67,6 +70,9 @@ dmypy.json
 
 # Ruff
 .ruff_cache/
+
+# Pre-commit
+.pre-commit-cache/
 
 # IDEs
 .vscode/
