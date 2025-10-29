@@ -11,8 +11,10 @@ import click
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.events import Key
 from textual.message import Message
-from textual.widgets import Footer, Header, Input, RichLog
+from textual.reactive import reactive
+from textual.widgets import Footer, Header, Input, RichLog, Static
 
 from .client import ZergClient
 
@@ -37,13 +39,84 @@ class ZergEvent(Message):
         super().__init__()
 
 
+class CommandInput(Input):
+    """Input widget with command history support."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.command_history: list[str] = []
+        self.history_index: int = -1
+        self.current_draft: str = ""  # Store current typing when navigating history
+        self.max_history: int = 100  # Maximum number of commands to store
+
+    def add_to_history(self, command: str) -> None:
+        """Add command to history, avoiding duplicates at the top."""
+        if command and command.strip():
+            # Remove the command if it already exists (to move it to top)
+            if command in self.command_history:
+                self.command_history.remove(command)
+            # Add to the front
+            self.command_history.insert(0, command)
+            # Limit history size
+            if len(self.command_history) > self.max_history:
+                self.command_history.pop()
+
+    def on_key(self, event: Key) -> None:
+        """Handle arrow key events for history navigation."""
+        if event.key == "up":
+            # Navigate backward in history (older commands)
+            if self.history_index < len(self.command_history) - 1:
+                if self.history_index == -1:
+                    # Store current input before navigating
+                    self.current_draft = self.value
+                self.history_index += 1
+                self.value = self.command_history[self.history_index]
+                self.cursor_position = len(self.value)
+                event.stop()
+
+        elif event.key == "down":
+            # Navigate forward in history (newer commands)
+            if self.history_index > 0:
+                self.history_index -= 1
+                self.value = self.command_history[self.history_index]
+                self.cursor_position = len(self.value)
+                event.stop()
+            elif self.history_index == 0:
+                # Restore draft or clear
+                self.history_index = -1
+                self.value = self.current_draft
+                self.cursor_position = len(self.value)
+                event.stop()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Reset history index and add command to history when submitted."""
+        if self.value.strip():
+            self.add_to_history(self.value)
+        self.history_index = -1
+        self.current_draft = ""
+
+
 class ChatPane(ScrollableContainer):
     """Chat pane for agent communication."""
 
+    BINDINGS = [
+        ("pageup", "page_up", "Scroll Up"),
+        ("pagedown", "page_down", "Scroll Down"),
+        ("home", "scroll_home", "Top"),
+        ("end", "scroll_end", "Bottom"),
+    ]
+
     def compose(self) -> ComposeResult:
         """Compose the chat pane."""
-        yield RichLog(id="chat-log", wrap=True, highlight=True, markup=True)
-        yield Input(placeholder="Type a command or message...", id="chat-input")
+        yield RichLog(
+            id="chat-log",
+            wrap=True,
+            highlight=True,
+            markup=True,
+            max_lines=1000,  # Limit buffer to prevent memory issues
+            auto_scroll=True,  # Auto-scroll to new content
+        )
+        yield CommandInput(placeholder="Type a command or message...", id="chat-input")
 
     def on_mount(self) -> None:
         """Initialize the chat pane."""
@@ -84,19 +157,47 @@ class ChatPane(ScrollableContainer):
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write(Text(f"[SYSTEM] {message}", style="dim italic"))
 
+    def action_page_up(self) -> None:
+        """Scroll up one page."""
+        self.scroll_page_up()
+
+    def action_page_down(self) -> None:
+        """Scroll down one page."""
+        self.scroll_page_down()
+
+    def action_scroll_home(self) -> None:
+        """Scroll to top."""
+        self.scroll_home(animate=True)
+
+    def action_scroll_end(self) -> None:
+        """Scroll to bottom."""
+        self.scroll_end(animate=True)
+
 
 class ReviewPane(ScrollableContainer):
     """Review pane for diffs and code changes."""
 
+    BINDINGS = [
+        ("pageup", "page_up", "Scroll Up"),
+        ("pagedown", "page_down", "Scroll Down"),
+    ]
+
     def compose(self) -> ComposeResult:
         """Compose the review pane."""
-        yield RichLog(id="review-log", wrap=True, highlight=True, markup=True)
+        yield RichLog(
+            id="review-log",
+            wrap=True,
+            highlight=True,
+            markup=True,
+            max_lines=500,  # Smaller buffer for review pane
+            auto_scroll=True,
+        )
 
     def on_mount(self) -> None:
         """Initialize the review pane."""
         review_log = self.query_one("#review-log", RichLog)
         review_log.write(Text("Review Pane", style="bold"))
-        review_log.write(Text("Diffs and changes will appear here...", style="dim"))
+        review_log.write(Text("Code Review (Coming Soon)", style="dim italic"))
 
     def show_diff(self, diff_text: str) -> None:
         """Display a diff in the review pane."""
@@ -110,13 +211,33 @@ class ReviewPane(ScrollableContainer):
         review_log = self.query_one("#review-log", RichLog)
         review_log.clear()
 
+    def action_page_up(self) -> None:
+        """Scroll up one page."""
+        self.scroll_page_up()
+
+    def action_page_down(self) -> None:
+        """Scroll down one page."""
+        self.scroll_page_down()
+
 
 class ExecutionPane(ScrollableContainer):
     """Execution pane for streaming logs and command output."""
 
+    BINDINGS = [
+        ("pageup", "page_up", "Scroll Up"),
+        ("pagedown", "page_down", "Scroll Down"),
+    ]
+
     def compose(self) -> ComposeResult:
         """Compose the execution pane."""
-        yield RichLog(id="execution-log", wrap=True, highlight=True, markup=True)
+        yield RichLog(
+            id="execution-log",
+            wrap=True,
+            highlight=True,
+            markup=True,
+            max_lines=500,  # Smaller buffer for execution pane
+            auto_scroll=True,
+        )
 
     def on_mount(self) -> None:
         """Initialize the execution pane."""
@@ -146,6 +267,70 @@ class ExecutionPane(ScrollableContainer):
         execution_log = self.query_one("#execution-log", RichLog)
         execution_log.clear()
 
+    def action_page_up(self) -> None:
+        """Scroll up one page."""
+        self.scroll_page_up()
+
+    def action_page_down(self) -> None:
+        """Scroll down one page."""
+        self.scroll_page_down()
+
+
+class StatusBar(Static):
+    """Status bar showing connection and agent status."""
+
+    DEFAULT_CSS = """
+    StatusBar {
+        dock: bottom;
+        height: 1;
+        background: $panel;
+        color: $text;
+        padding: 0 1;
+    }
+
+    StatusBar.connected {
+        background: $success-darken-2;
+    }
+
+    StatusBar.connecting {
+        background: $warning-darken-2;
+    }
+
+    StatusBar.disconnected {
+        background: $error-darken-2;
+    }
+    """
+
+    connection_status: reactive[str] = reactive("disconnected")
+    agent_status: reactive[str] = reactive("Idle")
+
+    def render(self) -> str:
+        """Render the status bar content."""
+        status_symbols = {
+            "connected": "🟢",
+            "connecting": "🟡",
+            "reconnecting": "🟡",
+            "disconnected": "🔴",
+        }
+        symbol = status_symbols.get(self.connection_status, "⚫")
+
+        status_text = {
+            "connected": "Connected",
+            "connecting": "Connecting...",
+            "reconnecting": f"Reconnecting...",
+            "disconnected": "Disconnected",
+        }.get(self.connection_status, "Unknown")
+
+        return f"{symbol} {status_text} | Agent: {self.agent_status}"
+
+    def watch_connection_status(self, old_status: str, new_status: str) -> None:
+        """Update CSS class when connection status changes."""
+        # Remove old class if it exists
+        if old_status:
+            self.remove_class(old_status)
+        # Add new class
+        self.add_class(new_status)
+
 
 class ZergTerminalClient(App):
     """The main ZTC TUI application."""
@@ -162,6 +347,14 @@ class ZergTerminalClient(App):
         self.client: ZergClient | None = None
         self.socket_url = "http://localhost:3333"
 
+        # Auto-reconnect settings
+        self.MAX_RECONNECT_ATTEMPTS = 5
+        self.INITIAL_BACKOFF = 1.0  # seconds
+        self.MAX_BACKOFF = 60.0  # seconds
+        self.BACKOFF_MULTIPLIER = 2.0
+        self.reconnect_attempts = 0
+        self.is_reconnecting = False
+
     # CSS for styling the app
     CSS = """
     Screen {
@@ -177,6 +370,8 @@ class ZergTerminalClient(App):
     #chat-log {
         height: 1fr;
         padding: 1;
+        overflow-y: auto;
+        scrollbar-size: 1 1;
     }
 
     #chat-input {
@@ -198,6 +393,8 @@ class ZergTerminalClient(App):
     #review-log {
         height: 100%;
         padding: 1;
+        overflow-y: auto;
+        scrollbar-size: 1 1;
     }
 
     #execution-pane {
@@ -208,6 +405,8 @@ class ZergTerminalClient(App):
     #execution-log {
         height: 100%;
         padding: 1;
+        overflow-y: auto;
+        scrollbar-size: 1 1;
     }
 
     RichLog {
@@ -235,6 +434,7 @@ class ZergTerminalClient(App):
                 yield ReviewPane(id="review-pane")
                 yield ExecutionPane(id="execution-pane")
 
+        yield StatusBar(id="status-bar")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -252,25 +452,38 @@ class ZergTerminalClient(App):
         """Worker to connect to Zerg service and initialize."""
         try:
             chat_pane = self.query_one("#chat-pane", ChatPane)
+            status_bar = self.query_one("#status-bar", StatusBar)
+
+            status_bar.connection_status = "connecting"
             chat_pane.add_system_message(f"Connecting to {self.socket_url}...")
 
             await self.client.connect()
 
             if self.client.connected:
+                status_bar.connection_status = "connected"
+                status_bar.agent_status = "Initializing"
                 chat_pane.add_system_message("Connected successfully!")
                 chat_pane.add_system_message("Initializing Zerg agent...")
 
                 # Initialize Zerg
                 await self.client.initialize_zerg()
 
+                status_bar.agent_status = "Ready"
                 chat_pane.add_system_message("Ready! Type a command or message below.")
             else:
+                status_bar.connection_status = "disconnected"
                 chat_pane.add_system_message("Failed to connect to Zerg service.")
+                # Start auto-reconnect
+                self.run_worker(self.auto_reconnect_worker(), exclusive=True, name="auto-reconnect")
 
         except Exception as e:
             L.error(f"Connection error: {e}")
+            status_bar = self.query_one("#status-bar", StatusBar)
+            status_bar.connection_status = "disconnected"
             chat_pane = self.query_one("#chat-pane", ChatPane)
             chat_pane.add_system_message(f"Connection error: {e}")
+            # Start auto-reconnect
+            self.run_worker(self.auto_reconnect_worker(), exclusive=True, name="auto-reconnect")
 
     def handle_zerg_event(self, event_type: str, data: dict) -> None:
         """
@@ -295,6 +508,7 @@ class ZergTerminalClient(App):
         try:
             chat_pane = self.query_one("#chat-pane", ChatPane)
             execution_pane = self.query_one("#execution-pane", ExecutionPane)
+            status_bar = self.query_one("#status-bar", StatusBar)
             # review_pane = self.query_one("#review-pane", ReviewPane)  # TODO: Add when diff routing implemented
 
             # Route events to appropriate panes
@@ -302,8 +516,21 @@ class ZergTerminalClient(App):
                 status = data.get("status", "unknown")
                 if status == "connected":
                     chat_pane.add_system_message("Connected to Zerg service")
+                    status_bar.connection_status = "connected"
                 elif status == "disconnected":
                     chat_pane.add_system_message("Disconnected from Zerg service")
+                    status_bar.connection_status = "disconnected"
+                    # Start auto-reconnect if not already reconnecting
+                    if not self.is_reconnecting:
+                        self.run_worker(self.auto_reconnect_worker(), exclusive=True, name="auto-reconnect")
+
+            elif event_type == "disconnect":
+                # Handle disconnect event from Socket.IO
+                status_bar.connection_status = "disconnected"
+                chat_pane.add_system_message("Lost connection to Zerg service")
+                # Start auto-reconnect if not already reconnecting
+                if not self.is_reconnecting:
+                    self.run_worker(self.auto_reconnect_worker(), exclusive=True, name="auto-reconnect")
 
             elif event_type in [
                 "zerg_output",
@@ -376,6 +603,63 @@ class ZergTerminalClient(App):
             L.error(f"Error sending command: {e}")
             chat_pane = self.query_one("#chat-pane", ChatPane)
             chat_pane.add_system_message(f"Error sending command: {e}")
+
+    async def auto_reconnect_worker(self) -> None:
+        """Worker that handles reconnection with exponential backoff."""
+        if self.is_reconnecting:
+            return  # Already reconnecting
+
+        self.is_reconnecting = True
+        chat_pane = self.query_one("#chat-pane", ChatPane)
+        status_bar = self.query_one("#status-bar", StatusBar)
+
+        while self.is_reconnecting and self.reconnect_attempts < self.MAX_RECONNECT_ATTEMPTS:
+            self.reconnect_attempts += 1
+
+            # Calculate backoff delay
+            backoff = min(
+                self.INITIAL_BACKOFF * (self.BACKOFF_MULTIPLIER ** (self.reconnect_attempts - 1)),
+                self.MAX_BACKOFF
+            )
+
+            status_bar.connection_status = "reconnecting"
+            chat_pane.add_system_message(
+                f"Reconnecting in {backoff:.1f}s... (attempt {self.reconnect_attempts}/{self.MAX_RECONNECT_ATTEMPTS})"
+            )
+
+            await asyncio.sleep(backoff)
+
+            # Attempt reconnection
+            try:
+                status_bar.connection_status = "connecting"
+                await self.client.connect()
+
+                if self.client.connected:
+                    status_bar.connection_status = "connected"
+                    status_bar.agent_status = "Re-initializing"
+                    self.reconnect_attempts = 0
+                    self.is_reconnecting = False
+
+                    chat_pane.add_system_message("✓ Reconnected successfully!")
+
+                    # Re-initialize Zerg
+                    await self.client.initialize_zerg()
+                    status_bar.agent_status = "Ready"
+                    chat_pane.add_system_message("Agent re-initialized. Ready!")
+                    return
+
+            except Exception as e:
+                L.warning(f"Reconnection attempt {self.reconnect_attempts} failed: {e}")
+                status_bar.connection_status = "disconnected"
+
+        # Max attempts reached
+        if self.reconnect_attempts >= self.MAX_RECONNECT_ATTEMPTS:
+            chat_pane.add_system_message(
+                f"Failed to reconnect after {self.MAX_RECONNECT_ATTEMPTS} attempts. "
+                "Please check your connection and restart."
+            )
+            status_bar.agent_status = "Connection Failed"
+            self.is_reconnecting = False
 
     def action_new_session(self) -> None:
         """Create a new session."""

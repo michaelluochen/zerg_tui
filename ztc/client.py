@@ -92,6 +92,7 @@ class ZergClient:
             self.connected = False
             L.info("Disconnected from Zerg server")
             self._handle_event("connection", {"status": "disconnected"})
+            self._handle_event("disconnect", {})
 
         @self.sio.on("stdout")
         async def on_stdout(data):
