@@ -7,7 +7,9 @@ Follows Zerg's class-based test organization patterns.
 
 import pytest
 
-from ztc.main import ChatPane, ExecutionPane, ReviewPane, ZergEvent, ZergTerminalClient
+from ztc.app import ZergTerminalClient
+from ztc.events import ZergEvent
+from ztc.widgets import ChatPane, ExecutionPane, ReviewPane
 
 
 class TestChatPane:
@@ -216,7 +218,7 @@ class TestZergTerminalClient:
         """Test that app can be created."""
         app = ZergTerminalClient()
 
-        assert app.socket_url == "http://localhost:3333"
+        assert app.config.socket_url == "http://localhost:3333"
         assert app.client is None  # Not connected yet
 
     @pytest.mark.asyncio

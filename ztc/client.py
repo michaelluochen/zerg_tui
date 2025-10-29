@@ -1,12 +1,12 @@
-# client.py
-# Zerg client adapted for Textual TUI
-# Based on reference/zerg/zerg/client.py
+"""
+Zerg Socket.IO client for TUI interaction.
+"""
 
 import asyncio
 import base64
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Dict, Optional, Union
 
 import socketio
 
@@ -16,7 +16,11 @@ L = logging.getLogger(__name__)
 class ZergClient:
     """Zerg Socket.IO client adapted for Textual TUI."""
 
-    def __init__(self, socket_url: str, event_callback: Callable | None = None):
+    def __init__(
+        self,
+        socket_url: str,
+        event_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None
+    ) -> None:
         """
         Initialize the Zerg client.
 
@@ -26,12 +30,12 @@ class ZergClient:
         """
         self.socket_url = socket_url
         self.sio = socketio.AsyncClient()
-        self.connected = False
-        self.zerg_data = {}
+        self.connected: bool = False
+        self.zerg_data: Dict[str, Any] = {}
         self.event_callback = event_callback
 
         # Dictates which channels are enabled / disabled
-        self.channels: dict[str, bool] = {
+        self.channels: Dict[str, bool] = {
             "stdout": True,
             "stderr": True,
             "prompt": False,
@@ -51,11 +55,11 @@ class ZergClient:
         # Set up handlers
         self.setup_handlers()
 
-    def set_event_callback(self, callback: Callable):
+    def set_event_callback(self, callback: Callable[[str, Dict[str, Any]], None]) -> None:
         """Set or update the event callback function."""
         self.event_callback = callback
 
-    def _handle_event(self, event_type: str, data: Any):
+    def _handle_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Internal method to route events to callback."""
         if self.event_callback:
             try:
@@ -63,102 +67,69 @@ class ZergClient:
             except Exception as e:
                 L.error(f"Error in event callback for {event_type}: {e}")
 
-    def set_channel(self, channel_name: str, value: bool):
+    def set_channel(self, channel_name: str, value: bool) -> None:
         """Enable or disable a specific event channel."""
         if channel_name in self.channels:
             self.channels[channel_name] = value
         else:
             L.warning(f"Channel {channel_name} does not exist")
 
-    def enable_channel(self, channel_name: str):
+    def enable_channel(self, channel_name: str) -> None:
         """Enable a specific event channel."""
         self.set_channel(channel_name, True)
 
-    def disable_channel(self, channel_name: str):
+    def disable_channel(self, channel_name: str) -> None:
         """Disable a specific event channel."""
         self.set_channel(channel_name, False)
 
-    def setup_handlers(self):
+    def _register_channel_handler(self, event_type: str) -> None:
+        """Register a channel-filtered event handler."""
+
+        async def handler(data):
+            if "value" in data and self.channels.get(event_type, False):
+                self._handle_event(event_type, data)
+
+        # Register the handler with the Socket.IO client
+        self.sio.on(event_type)(handler)
+
+    def setup_handlers(self) -> None:
         """Set up Socket.IO event handlers."""
 
+        # Connection handlers
         @self.sio.event
-        async def connect():
+        async def connect() -> None:
             self.connected = True
             L.info("Connected to Zerg server")
             self._handle_event("connection", {"status": "connected"})
 
         @self.sio.event
-        async def disconnect():
+        async def disconnect() -> None:
             self.connected = False
             L.info("Disconnected from Zerg server")
             self._handle_event("connection", {"status": "disconnected"})
             self._handle_event("disconnect", {})
 
-        @self.sio.on("stdout")
-        async def on_stdout(data):
-            if "value" in data and self.channels.get("stdout", False):
-                self._handle_event("stdout", data)
+        # Register channel-based handlers
+        channel_event_types = [
+            "stdout",
+            "stderr",
+            "prompt",
+            "system_prompt",
+            "zerg_tests",
+            "zerg_evals",
+            "zerg_choices",
+            "zerg_output",
+            "zerg_reasoning",
+            "zerg_error",
+            "zerg_warning",
+            "zerg_stdout",
+            "zerg_stderr",
+        ]
 
-        @self.sio.on("stderr")
-        async def on_stderr(data):
-            if "value" in data and self.channels.get("stderr", False):
-                self._handle_event("stderr", data)
+        for event_type in channel_event_types:
+            self._register_channel_handler(event_type)
 
-        @self.sio.on("prompt")
-        async def on_prompt(data):
-            if "value" in data and self.channels.get("prompt", False):
-                self._handle_event("prompt", data)
-
-        @self.sio.on("system_prompt")
-        async def on_system_prompt(data):
-            if "value" in data and self.channels.get("system_prompt", False):
-                self._handle_event("system_prompt", data)
-
-        @self.sio.on("zerg_tests")
-        async def on_zerg_tests(data):
-            if "value" in data and self.channels.get("zerg_tests", False):
-                self._handle_event("zerg_tests", data)
-
-        @self.sio.on("zerg_evals")
-        async def on_zerg_evals(data):
-            if "value" in data and self.channels.get("zerg_evals", False):
-                self._handle_event("zerg_evals", data)
-
-        @self.sio.on("zerg_choices")
-        async def on_zerg_choices(data):
-            if "value" in data and self.channels.get("zerg_choices", False):
-                self._handle_event("zerg_choices", data)
-
-        @self.sio.on("zerg_output")
-        async def on_zerg_output(data):
-            if "value" in data and self.channels.get("zerg_output", False):
-                self._handle_event("zerg_output", data)
-
-        @self.sio.on("zerg_reasoning")
-        async def on_zerg_reasoning(data):
-            if "value" in data and self.channels.get("zerg_reasoning", False):
-                self._handle_event("zerg_reasoning", data)
-
-        @self.sio.on("zerg_error")
-        async def on_zerg_error(data):
-            if "value" in data and self.channels.get("zerg_error", False):
-                self._handle_event("zerg_error", data)
-
-        @self.sio.on("zerg_warning")
-        async def on_zerg_warning(data):
-            if "value" in data and self.channels.get("zerg_warning", False):
-                self._handle_event("zerg_warning", data)
-
-        @self.sio.on("zerg_stdout")
-        async def on_zerg_stdout(data):
-            if "value" in data and self.channels.get("zerg_stdout", False):
-                self._handle_event("zerg_stdout", data)
-
-        @self.sio.on("zerg_stderr")
-        async def on_zerg_stderr(data):
-            if "value" in data and self.channels.get("zerg_stderr", False):
-                self._handle_event("zerg_stderr", data)
-
+        # Special handler for zerg_update (has different logic)
         @self.sio.on("zerg_update")
         async def on_zerg_update(data):
             if "zerg" in data:
@@ -168,7 +139,7 @@ class ZergClient:
             else:
                 self.zerg_data = {}
 
-    async def connect(self):
+    async def connect(self) -> None:
         """Connect to the Zerg Socket.IO server."""
         try:
             await self.sio.connect(self.socket_url)
@@ -177,21 +148,21 @@ class ZergClient:
             L.error(f"Error connecting to {self.socket_url}: {e}")
             raise
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
         """Disconnect from the Zerg Socket.IO server."""
         await self.sio.disconnect()
 
-    async def fetch_zerg_commands(self):
+    async def fetch_zerg_commands(self) -> None:
         """Fetch available Zerg commands."""
         L.info("Fetching Zerg commands...")
         await self.sio.emit("fetch_zerg_commands", {})
 
-    async def initialize_zerg(self):
+    async def initialize_zerg(self) -> None:
         """Initialize the Zerg agent."""
         L.info("Initializing Zerg...")
         await self.sio.emit("initialize_zerg", {})
 
-    async def zerg_command(self, cmd_value: str):
+    async def zerg_command(self, cmd_value: str) -> None:
         """
         Send a command to the Zerg agent.
 
@@ -201,12 +172,12 @@ class ZergClient:
         L.info(f"Sending command: {cmd_value}")
         await self.sio.emit("zerg_command", {"command": cmd_value})
 
-    async def update_zerg(self):
+    async def update_zerg(self) -> None:
         """Request a full Zerg state update."""
         L.info("Requesting Zerg update...")
         await self.sio.emit("request_zerg_update", {})
 
-    async def upload_file(self, filename: str, content: bytes | str):
+    async def upload_file(self, filename: str, content: Union[bytes, str]) -> None:
         """
         Upload a file to the Zerg workspace.
 
@@ -225,7 +196,7 @@ class ZergClient:
             L.error(f"Error uploading file {filename}: {e}")
             raise
 
-    async def download_file(self, filename: str) -> bytes | None:
+    async def download_file(self, filename: str) -> Optional[bytes]:
         """
         Download a file from the Zerg workspace.
 

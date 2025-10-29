@@ -325,7 +325,7 @@ uv pip install -e .
 uv pip install -e . --reinstall
 
 # Verify installation
-python -c "from ztc.main import ZergTerminalClient; print('✓ Imports work')"
+python -c "from ztc.app import ZergTerminalClient; print('✓ Imports work')"
 ```
 
 ### TUI rendering issues

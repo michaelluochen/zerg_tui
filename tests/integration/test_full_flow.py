@@ -10,8 +10,8 @@ import asyncio
 import pytest
 
 from tests.fixtures.mock_server import MockZergServer
+from ztc.app import ZergTerminalClient
 from ztc.client import ZergClient
-from ztc.main import ZergTerminalClient
 
 
 @pytest.fixture

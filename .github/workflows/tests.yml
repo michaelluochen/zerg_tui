@@ -121,4 +121,4 @@ jobs:
 
     - name: Test import
       run: |
-        uv run python -c "from ztc.main import ZergTerminalClient; from ztc.client import ZergClient; print('✓ Imports successful')"
+        uv run python -c "from ztc.app import ZergTerminalClient; from ztc.client import ZergClient; print('✓ Imports successful')"

@@ -318,7 +318,7 @@ async def test_event_emission(zerg_client):
 Use Textual's `run_test()` for headless TUI testing:
 
 ```python
-from ztc.main import ZergTerminalClient
+from ztc.app import ZergTerminalClient
 
 @pytest.mark.asyncio
 async def test_widget_composition():

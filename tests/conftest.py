@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from ztc.app import ZergTerminalClient
 from ztc.client import ZergClient
-from ztc.main import ZergTerminalClient
 
 
 @pytest.fixture
