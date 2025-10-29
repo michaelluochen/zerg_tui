@@ -130,25 +130,42 @@ ZTC uses a multi-pane layout optimized for agent workflows:
 
 ### Commands
 
-Type in the chat input box at the bottom of the Chat pane:
+Type in the chat input box at the bottom of the Chat pane. ZTC supports two types of commands:
 
-**Regular messages** - Just type and press Enter:
-```
-write a hello world function
-```
+#### Client-Side Commands (Handled by ZTC)
 
-**Special commands**:
+These commands are intercepted by ZTC and don't reach the Zerg service:
+
 ```
 init      # Re-initialize the Zerg agent
 update    # Request full agent state update
 ```
 
-Any natural language prompt works:
+#### Zerg Service Commands (Sent to Agent)
+
+All other input is sent directly to the Zerg service. The Zerg service interprets these as commands or prompts:
+
+**Information Commands:**
 ```
-refactor this code to use async/await
-add error handling to the connection logic
-write unit tests for the client module
+help                  # List all available Zerg commands
+list_actions          # Show available actions in environment
+list_specs            # List all specifications
+list_tests            # List all tests
+observe_environment   # Get current environment state
 ```
+
+**Natural Language Prompts:**
+
+Type any message directly - the Zerg agent will interpret it as a prompt:
+```
+What files are in the current directory?
+Explain what this code does
+Show me the current state
+```
+
+**Note:** Available commands depend on your Zerg service configuration. Type `help` to see all commands available in your instance.
+
+For a complete command reference, see [docs/COMMANDS.md](docs/COMMANDS.md).
 
 ### Keyboard Shortcuts
 
@@ -187,26 +204,45 @@ Here's what a typical ZTC session looks like:
 1. Start ZTC:
    $ ztc
 
-2. Wait for connection (system messages appear):
+2. Connection establishes automatically:
+
+   Chat Pane:
    [SYSTEM] Connecting to http://localhost:3333...
+   [SYSTEM] Connected to Zerg service
    [SYSTEM] Connected successfully!
    [SYSTEM] Initializing Zerg agent...
    [OUTPUT] Hello, I'm Zerg ...
    [OUTPUT] zerrrrgg now online ...
    [SYSTEM] Ready! Type a command or message below.
 
-3. Type a command in the input box:
-   write a fibonacci function
+   Execution Pane:
+   zerg service connected
+   workspace change detected: created
+   zerg initialized and updated
 
-4. Watch the response stream in the Chat pane:
-   [OUTPUT] I'll create a fibonacci function...
-   [REASONING] Planning the implementation...
-   [OUTPUT] Creating fib.py with recursive implementation...
+3. Try the help command:
+   You: help
 
-5. See execution logs in the Execution pane:
+   Chat Pane:
+   [OUTPUT] Available commands:
+   [OUTPUT] help, list_actions, list_specs, list_tests, exec, observe_environment...
+
+4. Query the environment:
+   You: observe_environment
+
+   Execution Pane:
    workspace change detected: modified
-   file created: fib.py
-   zerg updated
+
+   Chat Pane:
+   [OUTPUT] Current environment state: /tmp/zerg/agent_workspace_...
+
+5. Send a natural language prompt:
+   You: What files are in the current directory?
+
+   Chat Pane:
+   [OUTPUT] Let me check the current directory...
+   [REASONING] Using file system observation...
+   [OUTPUT] The workspace contains: ...
 ```
 
 ## Configuration
@@ -313,6 +349,29 @@ lsof -i :3334
 kill -9 <PID>
 
 # Or use a different port in tests
+```
+
+### "Unknown command" in Execution Pane
+
+**Cause**: Command sent to Zerg service is not recognized
+
+**What's happening:**
+- ZTC sends all input (except `init`/`update`) to the Zerg service
+- The Zerg service tries to interpret it as a command
+- If not recognized, it logs "Unknown command: <text>"
+
+**Fix**:
+1. **Use valid Zerg commands** - Type `help` to see available commands
+2. **Check command spelling** - Commands are case-sensitive
+3. **For natural language prompts** - The Zerg service should handle them, but behavior depends on configuration
+4. **Try known working commands**: `help`, `list_actions`, `observe_environment`
+
+**Example**:
+```
+✗ Wrong: "write a function"     → "Unknown command: write"
+✓ Right: "help"                  → Shows command list
+✓ Right: "list_actions"          → Shows available actions
+✓ Right: "observe_environment"   → Shows environment state
 ```
 
 ## Development

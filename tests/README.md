@@ -411,6 +411,42 @@ async def test_with_server(mock_server):
 - **Logging**: Logs all events for debugging
 - **Clean lifecycle**: Proper startup/shutdown
 
+### Testing Commands
+
+To test specific Zerg commands in integration tests:
+
+```python
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_help_command(mock_server):
+    """Test the help command."""
+    events_received = []
+
+    def callback(event_type, data):
+        events_received.append((event_type, data))
+
+    client = ZergClient("http://localhost:3334", event_callback=callback)
+    await client.connect()
+
+    # Send help command
+    await client.zerg_command("help")
+    await asyncio.sleep(0.2)
+
+    # Verify response
+    output_events = [e for e in events_received if e[0] == "zerg_output"]
+    assert len(output_events) > 0
+
+    await client.disconnect()
+```
+
+**Common commands to test:**
+- `help` - List all commands
+- `list_actions` - List available actions
+- `observe_environment` - Get environment state
+- Custom commands your Zerg instance supports
+
+**Note:** The mock server in `tests/fixtures/mock_server.py` provides basic responses. For testing actual command logic, you may need to enhance the mock server or test against a real Zerg instance.
+
 ## Coverage
 
 ### Current Coverage
