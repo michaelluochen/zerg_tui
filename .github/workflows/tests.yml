@@ -1,0 +1,124 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test on Python ${{ matrix.python-version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.10', '3.11', '3.12']
+
+    env:
+      UV_SYSTEM_PYTHON: 1
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+
+    - name: Install dependencies
+      run: |
+        uv pip install -e ".[dev]"
+
+    - name: Run unit tests
+      run: |
+        uv run pytest tests/unit -v -m "not slow" --cov=ztc --cov-report=xml --cov-report=term
+
+    - name: Run integration tests
+      run: |
+        uv run pytest tests/integration -v --cov=ztc --cov-append --cov-report=xml --cov-report=term
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
+      continue-on-error: true
+
+  lint:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+
+    env:
+      UV_SYSTEM_PYTHON: 1
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+
+    - name: Install dependencies
+      run: |
+        uv pip install -e ".[dev]"
+
+    - name: Run ruff
+      run: |
+        uv run ruff check ztc tests
+
+    - name: Run black
+      run: |
+        uv run black --check ztc tests
+
+    - name: Run mypy
+      run: |
+        uv run mypy ztc
+      continue-on-error: true
+
+  install-test:
+    name: Test Package Installation
+    runs-on: ubuntu-latest
+
+    env:
+      UV_SYSTEM_PYTHON: 1
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
+
+    - name: Test package installation
+      run: |
+        uv pip install -e .
+        uv run ztc --version
+        uv run ztc --help
+
+    - name: Test import
+      run: |
+        uv run python -c "from ztc.main import ZergTerminalClient; from ztc.client import ZergClient; print('✓ Imports successful')"

@@ -1,5 +1,7 @@
 # ZTC Project Vision & Specification
 
+> **Note**: For installation and usage instructions, see [README.md](../README.md). This document covers the project vision, architecture, and design decisions.
+
 **Project**: Zerg Terminal Client (ZTC)
 **Date**: October 20, 2025
 **Status**: Foundation Phase (M0)
